@@ -5,6 +5,7 @@ No broker order placement is implemented.
 """
 from __future__ import annotations
 
+import json
 import math
 import os
 import statistics
@@ -23,6 +24,8 @@ mcp = FastMCP(
         "Educational market research and risk calculations. Yahoo Finance data is unofficial "
         "and may be delayed. Never place orders or present signals as recommendations."
     ),
+    host="0.0.0.0",
+    port=int(os.getenv("PORT", "8000")),
     stateless_http=True,
     json_response=True,
 )
@@ -267,6 +270,4 @@ def backtest_opening_range_breakout(symbol: str, period: str = "3mo", target_r: 
             "warning": "Exploratory backtest only. Yahoo intraday history may be limited/incomplete. Results are not a forecast and do not establish an edge."}
 
 if __name__ == "__main__":
-    host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", "8000"))
-    mcp.run(transport="streamable-http", host=host, port=port, json_response=True, stateless_http=True)
+    mcp.run(transport="streamable-http")
