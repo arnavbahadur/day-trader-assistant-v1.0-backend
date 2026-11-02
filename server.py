@@ -10,6 +10,11 @@ import math
 import os
 import statistics
 import time
+import hmac
+import uvicorn
+
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote
@@ -29,6 +34,35 @@ mcp = FastMCP(
     stateless_http=True,
     json_response=True,
 )
+
+class BearerTokenMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        # Protect the MCP endpoint
+        if request.url.path != "/mcp":
+            return await call_next(request)
+
+        expected_token = os.getenv("MCP_ACCESS_TOKEN")
+
+        if not expected_token:
+            return JSONResponse(
+                {"error": "Server authentication is not configured"},
+                status_code=503,
+            )
+
+        auth_header = request.headers.get("Authorization", "")
+        scheme, _, supplied_token = auth_header.partition(" ")
+
+        if (
+            scheme.lower() != "bearer"
+            or not hmac.compare_digest(supplied_token, expected_token)
+        ):
+            return JSONResponse(
+                {"error": "Unauthorized"},
+                status_code=401,
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        return await call_next(request)
 
 NY = ZoneInfo("America/New_York")
 YAHOO = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
@@ -269,5 +303,12 @@ def backtest_opening_range_breakout(symbol: str, period: str = "3mo", target_r: 
                             "No fees, slippage, spreads, halts, or partial fills modeled."],
             "warning": "Exploratory backtest only. Yahoo intraday history may be limited/incomplete. Results are not a forecast and do not establish an edge."}
 
+app = mcp.streamable_http_app()
+app.add_middleware(BearerTokenMiddleware)
+
 if __name__ == "__main__":
-    mcp.run(transport="streamable-http")
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", "8000")),
+    )
